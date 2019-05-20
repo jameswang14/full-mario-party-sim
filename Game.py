@@ -2,10 +2,22 @@ import random
 import math
 import utils
 import numpy as np
+from board.Board import Board
+from board.BoardParser import parse_board_from_file
+from board.BlueTile import BlueTile
+from board.RedTile import RedTile
+from board.GreenTile import GreenTile
+from board.BowserTile import BowserTile
+from board.DKTile import DKTile
+from board.DuelTile import DuelTile
+from board.ItemTile import ItemTile
+from board.IntersectionTile import IntersectionTile
+
 from Player import Player
 from GameStat import GameStat
+from state.State import State
 
-# Based on averages from 5 multiplayer boards in Mario Party 7 #
+# KNOWN VALUES - Based on averages from 5 multiplayer boards in Mario Party 7 #
 RED_PCT = 0.12524186787
 GREEN_PCT = 0.0860890342
 DK_PCT = 0.03283618376
@@ -16,7 +28,7 @@ SHOP_PCT = 0.03283618376
 BLUE_PCT = 1 - (RED_PCT + GREEN_PCT + DK_PCT + BOWSER_PCT + DUEL_PCT)
 # ----------------------------------------------------------- #
 
-# Estimates
+# ESTIMATES #
 MIN_STAR_DIST = 30
 MAX_STAR_DIST = 40
 GREEN_STAR_PCT = 0.05
@@ -25,28 +37,56 @@ BOWSER_TAKE_STAR_PCT = 0.1
 BOWSER_MIN_COIN_TAKE = 5
 BOWSER_MAX_COIN_TAKE = 50
 BATTLE_MINIGAME_PCT = 0.1
+# ----------------------------------------------------------- #
 
 def count(l, t):
     return len([x for x in l if x == t])
 
 class Game(object):
     def __init__(self, players, max_turns, stats=GameStat()):
-        self.players = [Player(x[0], x[1], ident=i) for i,x in enumerate(players)]
+        self.board = parse_board_from_file("./board/board_test.txt")
+        self.state = State(players, max_turns, self.board, stats)
         self.total_skill = sum([x[0] for x in players])
-        self.standings = []
-        self.minigame_assign = {}
-        self.turn_num = 0
-        self.max_turns = max_turns
         self.stats = stats
 
     def run(self):
-        while self.turn_num < self.max_turns:
-            self.minigame_assign = {}
+        self.start_game()
+        while self.state.turn_num < self.state.max_turns:
             self.update_standings() 
-            self.turn()
+            self.turn1()
             self.minigame()
-            self.turn_num += 1
+            self.state.turn_num += 1
         self.bonus_stars()
+        self.update_standings() 
+
+    def start_game(self):
+        for p in self.state.players:
+            p.coins = 10
+            self.state.player_to_tile[p] = self.board.start
+
+    def turn1(self):
+        for p in self.state.players:
+            p.use_item(self.state)
+            p.roll(self.state)
+            next_tile = None
+            while self.state.current_roll > 0:
+                next_tile = self.state.player_to_tile[p].next[0]
+                if next_tile == self.state.star: 
+                    p.buy_star(next_tile, self.state)
+                elif isinstance(next_tile, ItemTile):
+                    next_tile.apply(p, self.state, self.stats)
+
+                # if isinstance(next_tile, (ItemTiles, ShopTile, IntersectionTile, StartTile)):
+                #     continue
+                elif not isinstance(next_tile, IntersectionTile):
+                    next_tile = random.choice(self.state.player_to_tile[p].next)
+                    self.state.current_roll -= 1
+                    p.spaces_moved += 1
+                    self.stats.inc("spaces_moved")
+                self.state.player_to_tile[p] = next_tile
+
+            next_tile.apply(p, self.state, self.stats)
+
 
     def minigame(self):
         win_amt = 0
@@ -55,7 +95,7 @@ class Game(object):
         if random.random() < BATTLE_MINIGAME_PCT: 
             battle = True
             bounty = 5 * random.choice([1, 2, 4, 6, 8, 10])
-            for p in self.players:
+            for p in self.state.players:
                 win_amt += min(bounty, p.coins)
                 p.coins -= min(bounty, p.coins)
             self.stats.inc("num_battle")
@@ -63,27 +103,27 @@ class Game(object):
 
         else: win_amt = 10
         # Battle or 4-player Minigame
-        if battle or count(self.minigame_assign.values(), 'blue') == 4 or count(self.minigame_assign.values(), 'red') == 4:
+        if battle or count(self.state.minigame_assign.values(), 'blue') == 4 or count(self.state.minigame_assign.values(), 'red') == 4:
 
             r = random.random()
             p = 0.0
-            win_pcts = [p.skill/self.total_skill for p in self.players]
+            win_pcts = [p.skill/self.total_skill for p in self.state.players]
             for i, pct in enumerate(win_pcts):
                 p += pct
                 if r < p:
-                    self.players[i].coins += win_amt
-                    self.players[i].minigames_won += 1
+                    self.state.players[i].coins += win_amt
+                    self.state.players[i].minigames_won += 1
                     break
 
             self.stats.inc("num_four_vs_four")
 
         # 3v1 Minigame - we use the average skill of the group of 3 to calculate the chance they win the minigame
-        elif count(self.minigame_assign.values(), 'blue') == 3 or count(self.minigame_assign.values(), 'red') == 3:
+        elif count(self.state.minigame_assign.values(), 'blue') == 3 or count(self.state.minigame_assign.values(), 'red') == 3:
             dominant = 'blue'
-            if count(self.minigame_assign.values(), 'red') == 3: 
+            if count(self.state.minigame_assign.values(), 'red') == 3: 
                 dominant = 'red'
-            three_team = [p for p in self.players if self.minigame_assign[p] == dominant]
-            single_team = [p for p in self.players if self.minigame_assign[p] != dominant]
+            three_team = [p for p in self.state.players if self.state.minigame_assign[p] == dominant]
+            single_team = [p for p in self.state.players if self.state.minigame_assign[p] != dominant]
             avg_skill = np.mean([x.skill for x in three_team])
             win_pct = avg_skill / (avg_skill + single_team[0].skill)
 
@@ -100,8 +140,8 @@ class Game(object):
 
         # 2v2 Minigame - we use the average skill of each team to calculate their chance to win the minigame
         else:
-            team_one = [p for p in self.players if self.minigame_assign[p] == 'blue']
-            team_two = [p for p in self.players if self.minigame_assign[p] == 'red']
+            team_one = [p for p in self.state.players if self.state.minigame_assign[p] == 'blue']
+            team_two = [p for p in self.state.players if self.state.minigame_assign[p] == 'red']
             avg_skill_one = np.mean([x.skill for x in team_one])
             avg_skill_two = np.mean([x.skill for x in team_two])
             win_pct = avg_skill_one / (avg_skill_one + avg_skill_two)
@@ -134,7 +174,7 @@ class Game(object):
         #   4f. Duel:   +- Coins/Star based on skill
         # 5. Minigame (once all players are done)
 
-        for p in self.players:
+        for p in self.state.players:
             # 1. Use Items and Roll
             roll = self.roll()
             p.spaces_moved += roll
@@ -150,8 +190,13 @@ class Game(object):
                     p.spaces_from_star = MAX_STAR_DIST + p.spaces_from_star
 
             # 3. Pick up Items and Shop (if money allows)
-            if random.random() < ITEM_PCT * roll:
-                p.items += 1
+            # if random.random() < ITEM_PCT * roll:
+            #     p.items += 1
+
+            # 3.5 Use Items
+            # Because only one item can be used at a time, it becomes non-trivial to choose what item to use. 
+            # We use the following order of priority:
+            # 1. Use Mushrooms if the roll EV * mushroom multiplier will land them on a star
 
             # item_cost = random.randint(0, 4) * 5
             # if p.coins - item_cost >= 25: # TODO: Replace with some player-based tolerance value
@@ -165,7 +210,7 @@ class Game(object):
             if r_space < RED_PCT:
                 p.red += 1
                 p.coins -= 3
-                self.minigame_assign[p] = 'red'
+                self.state.minigame_assign[p] = 'red'
 
             # 4c. Green: +Coins/Star, -Coins, Teleport
             elif r_space < RED_PCT + GREEN_PCT:
@@ -186,10 +231,10 @@ class Game(object):
             # 4a. Blue: +3 coins
             else:
                 p.coins += 3
-                self.minigame_assign[p] = 'blue'
+                self.state.minigame_assign[p] = 'blue'
 
             # Make sure nothing is negative
-            for x in self.players:
+            for x in self.state.players:
                 x.coins = max(x.coins, 0)
                 x.stars = max(x.stars, 0)
 
@@ -219,8 +264,8 @@ class Game(object):
                 self.buy_star(p) # Yes it's possible to get two stars in one turn!
                 self.stats.inc("num_stars")
 
-        if random.random() < 0.3: self.minigame_assign[p] = 'red' # with a 50/50 chance, I noticed the number of 1v3 minigames seemed higher than it should be
-        else: self.minigame_assign[p] = 'blue'
+        if random.random() < 0.3: self.state.minigame_assign[p] = 'red' # with a 50/50 chance, I noticed the number of 1v3 minigames seemed higher than it should be
+        else: self.state.minigame_assign[p] = 'blue'
 
         p.green += 1
 
@@ -252,18 +297,18 @@ class Game(object):
             # Multi-player: only one player has to pass
             else:
                 game_pass = False
-                for x in self.players:
+                for x in self.state.players:
                     if random.random() < p.skill / 100:
                         game_pass = True
                         break
                 if not game_pass:
                     if random.random() < BOWSER_TAKE_STAR_PCT:
-                        for x in self.players: x.stars -= 1
+                        for x in self.state.players: x.stars -= 1
                     else:
                         t = random.randint(BOWSER_MIN_COIN_TAKE, BOWSER_MAX_COIN_TAKE)
-                        for x in self.players: x.coins -= t
+                        for x in self.state.players: x.coins -= t
 
-        self.minigame_assign[p] = 'red'
+        self.state.minigame_assign[p] = 'red'
 
 
     # In other Mario Parties, DK usually does more. A star may only be acquired in single-player minigames
@@ -280,10 +325,10 @@ class Game(object):
         else:
             r_dk = random.choice([1,2,3])
             total_bananas = 35
-            for x in self.players:
+            for x in self.state.players:
                 x.coins += int(x.skill/self.total_skill * total_bananas) * r_dk
 
-        self.minigame_assign[p] = 'blue'
+        self.state.minigame_assign[p] = 'blue'
 
     # Duels are especailly key since they can drastically turn a game around. Choosing an optimal 
     # duel opponent can be tricky, since it depends both on how many turns are remaining, how many stars/coins everyone has,
@@ -313,9 +358,9 @@ class Game(object):
         ev = self.calc_duel_ev(p)
         duel_target = max(ev, key=ev.get)
 
-        if p != self.standings[0]:
+        if p != self.state.standings[0]:
             self.stats.inc("num_duels_by_not_first")
-            if duel_target == self.standings[0]:
+            if duel_target == self.state.standings[0]:
                 self.stats.inc("duel_top_player")
 
         win_pct = p.skill / max((duel_target.skill + p.skill), 1)
@@ -356,23 +401,23 @@ class Game(object):
             winner.stars += min(loser.stars, 2)
             loser.stars -= min(loser.stars, 2)
 
-        if random.random() < 0.5: self.minigame_assign[p] = 'red'
-        else: self.minigame_assign[p] = 'blue'
+        if random.random() < 0.5: self.state.minigame_assign[p] = 'red'
+        else: self.state.minigame_assign[p] = 'blue'
 
 
     def calc_duel_ev(self, p):
         ev = {}
-        for x in self.players:
+        for x in self.state.players:
             if x == p: continue
             win_pct = p.skill / max((x.skill + p.skill), 1)
-            star_to_coins = 60 * math.exp(math.log(5) * (self.turn_num / self.max_turns))
+            star_to_coins = 60 * math.exp(math.log(5) * (self.state.turn_num / self.state.max_turns))
             exp_val = win_pct * (1/6) * (0 + min(x.coins, 10) + x.coins/2 + x.coins + min(x.stars, 1) * star_to_coins + min(x.stars, 2) * star_to_coins)
             exp_val -= (1-win_pct) * (1/6) * (0 + min(p.coins, 10) + p.coins/2 + p.coins + min(p.stars, 1) * star_to_coins + min(x.stars, 2) * star_to_coins)
             ev[x] = exp_val
         return ev
 
     def roll(self):
-        return random.randint(0, 10)
+        return random.randint(1, 10)
 
     def buy_star(self, p):
         p.stars += 1
@@ -380,30 +425,36 @@ class Game(object):
 
     def move_star(self):
         new_star = random.randint(MIN_STAR_DIST, MAX_STAR_DIST)
-        for x in self.players:
+        for x in self.state.players:
             x.spaces_from_star = min(5, new_star-x.spaces_from_star)
 
     def bonus_stars(self):
-        minigame_star = max(self.players, key=lambda x: x.minigames_won)
-        running_star = max(self.players, key=lambda x: x.spaces_moved)
-        happening_star = max(self.players, key=lambda x: x.green)
-        red_star = max(self.players, key=lambda x: x.red)
-        # shopping_star = max(self.players, key=lambda x: x.coins_spent)
-        # orb_star = max(self.players, key=lambda x: x.items_used)
-        opts = [minigame_star, running_star, happening_star, red_star]
+        opts = [
+            "minigames_won",
+            "spaces_moved",
+            "green",
+            "red",
+            # "shopping_star",
+            # "orb_star",
+        ]
         choices = random.choices(opts, k=3)
-        for c in choices: c.stars += 1
+        for c in choices: 
+            winners = self._get_bonus_star_winners(c)
+            for p in winners:
+                p.stars += 1
+
+    def _get_bonus_star_winners(self, attr):
+        m = max(self.state.players, key=lambda x: getattr(x, attr))
+        return [p for p in self.state.players if getattr(p, attr) == m]
 
     def update_standings(self):
         # Sort by coins, then by stars to take advantage of stable sort
-        self.standings = sorted(self.players, key=lambda x: x.coins, reverse=True)
-        self.standings = sorted(self.standings, key=lambda x: x.stars, reverse=True)
+        self.state.standings = sorted(self.state.players, key=lambda x: x.coins, reverse=True)
+        self.state.standings = sorted(self.state.standings, key=lambda x: x.stars, reverse=True)
 
     def print_results(self):
-        for p in self.players: print(p)
+        for p in self.state.players: print(p)
 
     def get_winner(self):
         self.update_standings()
-        return self.standings[0].id
-
-
+        return self.state.standings[0]._id

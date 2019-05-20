@@ -1,13 +1,14 @@
+import random
+from items.ItemBase import ItemType
 class Player(object):
-    def __init__(self, skill, strat_bonus=0.0, ident=0):
+    def __init__(self, skill, ident=0):
         self.reset()
         self.skill = skill
-        self.strat_bonus = 1.0+strat_bonus
         self.wins = 0
-        self.id = ident
+        self._id = ident
         self.items = []
     def __str__(self):
-        return "Stars: {}, Coins: {}, Skill: {}".format(self.stars, self.coins, self.skill)
+        return "ID: {}, Stars: {}, Coins: {}, Skill: {}".format(self._id, self.stars, self.coins, self.skill)
     def reset(self):
         self.coins = 10 
         self.spaces_moved = 0
@@ -19,4 +20,25 @@ class Player(object):
         self.stars = 0
         self.items = []
         self.minigames_won = 0
-        
+
+    def buy_star(self, t, state):      
+        if self.coins >= 20:
+            self.stars += 1
+            self.coins -= 20
+            state.stats.inc("num_stars")
+            state.move_star([t])  
+
+    def use_item(self, state):
+        if len(self.items) == 0:
+            return
+        if self.items[0].type == ItemType.SELF:
+            self.items[0].apply(player=self, state=state)
+        elif self.items[0].type == ItemType.LAND \
+            or self.items[0].type == ItemType.PASS:
+            print("Here")
+            print(len(state.board.adjacent_tiles(state.player_to_tile[self]) ))
+        del self.items[0]
+        state.stats.inc("items_used")
+
+    def roll(self, state):
+        state.current_roll += random.randint(1, 10)
