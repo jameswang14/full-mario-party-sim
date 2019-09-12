@@ -18,6 +18,7 @@ class TileType(Enum):
     INTERSECTION = 10
     START = 11
 
+NON_WALKABLE_TILES = {TileType.ITEM, TileType.SHOP, TileType.INTERSECTION, TileType.START}
 class TileBase(object):
     def __init__(self, tile_type, _id):
         self._id = _id
@@ -27,6 +28,9 @@ class TileBase(object):
 
     def __eq__(self, other):
         return self._id == other._id
+
+    def __hash__(self):
+        return self._id
 
     def append(self, t):
         self.next.append(t)

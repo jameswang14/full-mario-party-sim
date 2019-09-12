@@ -11,7 +11,9 @@ from board.BowserTile import BowserTile
 from board.DKTile import DKTile
 from board.DuelTile import DuelTile
 from board.ItemTile import ItemTile
+from board.ShopTile import ShopTile
 from board.IntersectionTile import IntersectionTile
+from items.ItemBase import ItemType
 
 from Player import Player
 from GameStat import GameStat
@@ -29,7 +31,7 @@ BLUE_PCT = 1 - (RED_PCT + GREEN_PCT + DK_PCT + BOWSER_PCT + DUEL_PCT)
 # ----------------------------------------------------------- #
 
 # ESTIMATES #
-MIN_STAR_DIST = 30
+MIN_STAR_DIST = 10
 MAX_STAR_DIST = 40
 GREEN_STAR_PCT = 0.05
 BOWSER_MINIGAME_PCT = 0.5
@@ -67,25 +69,36 @@ class Game(object):
     def turn1(self):
         for p in self.state.players:
             p.use_item(self.state)
-            p.roll(self.state)
+            # if we use a mushroom, rolls are handled on item.apply so we don't need to roll again
+            if self.state.current_roll == 0:
+                p.roll(self.state)
             next_tile = None
             while self.state.current_roll > 0:
                 next_tile = self.state.player_to_tile[p].next[0]
                 if next_tile == self.state.star: 
                     p.buy_star(next_tile, self.state)
-                elif isinstance(next_tile, ItemTile):
+                elif next_tile._id in self.state.tiles_with_items and self.state.tiles_with_items[next_tile._id].type == ItemType.PASS:
+                    self.state.tiles_with_items[next_tile._id].apply(p, self.state)
+                    del self.state.tiles_with_items[next_tile._id]
+                elif isinstance(next_tile, ItemTile) or isinstance(next_tile, ShopTile):
                     next_tile.apply(p, self.state, self.stats)
-
-                # if isinstance(next_tile, (ItemTiles, ShopTile, IntersectionTile, StartTile)):
-                #     continue
                 elif not isinstance(next_tile, IntersectionTile):
+                    # TODO replace naive logic
                     next_tile = random.choice(self.state.player_to_tile[p].next)
                     self.state.current_roll -= 1
                     p.spaces_moved += 1
                     self.stats.inc("spaces_moved")
-                self.state.player_to_tile[p] = next_tile
+                    if "zapped" in p.status:
+                        self.stats.inc("coins_lost_to_zap", amt=3)
+                        p.coins = max(0, p.coins - 3)
 
-            next_tile.apply(p, self.state, self.stats)
+                self.state.player_to_tile[p] = next_tile
+            
+            if next_tile._id in self.state.tiles_with_items:
+                self.state.tiles_with_items[next_tile._id].apply(p, self.state)
+            else:
+                next_tile.apply(p, self.state, self.stats)
+            p.update_status()
 
 
     def minigame(self):

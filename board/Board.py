@@ -1,9 +1,8 @@
 import random
+from board.TileBase import NON_WALKABLE_TILES
 class Board:
     start = None
     id_to_tile = {}
-
-
     def random_tile(self, exclude=[]):
         a = random.choice(list(self.id_to_tile.values()))
         while a in exclude:
@@ -21,20 +20,26 @@ class Board:
                 s.append(t, d+1)
         return -1
 
-    def adjacent_tiles(self, tile, n=4):
+    def adjacent_tiles(self, tile, n=4, walkable_only=False):
         tiles = []
-        self._get_adjacent_tiles(tile, n, tiles, False)
-        self._get_adjacent_tiles(tile, n, tiles, True)
-        tiles.remove(tile)
+        self._get_adjacent_tiles(tile, n, tiles, False, walkable_only)
+        self._get_adjacent_tiles(tile, n, tiles, True, walkable_only)
+        if tile in tiles: 
+            tiles.remove(tile)
         return tiles
 
-    def _get_adjacent_tiles(self, tile, n, tiles, reverse):
+    def _get_adjacent_tiles(self, tile, n, tiles, reverse, walkable_only):
         if n == 0:
             return
-        tiles.append(tile)
+        if not walkable_only or (walkable_only and tile.type not in NON_WALKABLE_TILES):
+            tiles.append(tile)
         next_tiles = tile.next if reverse else tile.previous
         for t in next_tiles:
-            self._get_adjacent_tiles(t, n-1, tiles, reverse)
+            if walkable_only and t.type in NON_WALKABLE_TILES:
+                self._get_adjacent_tiles(t, n, tiles, reverse, walkable_only)
+            else:
+                self._get_adjacent_tiles(t, n-1, tiles, reverse, walkable_only)
+
 
 
 

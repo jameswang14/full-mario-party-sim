@@ -66,7 +66,7 @@ def trial(players, n, gs=GameStat()):
     return [x/n for x in wins]
 
 
-NUM_TURNS = 15
+NUM_TURNS = 50
 
 
 if __name__ == '__main__':

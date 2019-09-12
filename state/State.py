@@ -5,6 +5,10 @@ class State:
     def move_star(self, exclude=[]):
         self.star = self.board.random_tile(exclude)
 
+    def move_player_random(self, p):
+        random_tile = self.board.random_tile(exclude=[self.player_to_tile[p]])
+        self.player_to_tile[p] = random_tile
+
     def __init__(self, players, max_turns, board, stats):
         self.players = [Player(x[0], x[1]) for i,x in enumerate(players)]
         self.standings = []

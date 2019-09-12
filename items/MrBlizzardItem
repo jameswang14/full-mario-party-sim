@@ -1,7 +1,7 @@
 from items.ItemBase import ItemBase, ItemType
-class HammerBroItem(ItemBase):
+class MrBlizzardItem(ItemBase):
     def __init__(self):
-        self._cost = 20
+        self._cost = 10
         self.owner = None
 
     @property   
@@ -13,9 +13,7 @@ class HammerBroItem(ItemBase):
         return ItemType.LAND
 
     def apply(self, target, state):
-        coins_taken = min(target.coins, 10)
-        self.owner.coins += coins_taken
-        target.coins -= coins_taken
-        state.stats.inc("hammer_bro_landed")
+        target.items = []   
+        state.stats.inc("mr_blizzard_landed")
     
 

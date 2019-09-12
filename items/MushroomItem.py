@@ -12,5 +12,9 @@ class MushroomItem(ItemBase):
         return ItemType.SELF
 
     def apply(self, player, state, target=None):
-        player.roll(state)
+        r = player.roll(state)
+        if player.roll(state) == r:
+            player.coins += 10
+        state.stats.inc("shroom_used")
+
 

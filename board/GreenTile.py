@@ -29,8 +29,8 @@ class GreenTile(TileBase):
 
         # Teleport - Note: These don't contribute to the movement bonus star
         if r == 3:
-            player.spaces_from_star = random.randint(0, MAX_STAR_DIST)
-            if player.spaces_from_star == 0:
+            state.move_player_random(player)
+            if state.player_to_tile[player] == state.star: 
                 player.buy_star(self, state) # Yes it's possible to get two stars in one turn!
                 stats.inc("num_stars")
 

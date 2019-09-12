@@ -7,6 +7,7 @@ from board.DKTile import DKTile
 from board.DuelTile import DuelTile
 from board.IntersectionTile import IntersectionTile
 from board.ItemTile import ItemTile
+from board.ShopTile import ShopTile
 
 LETTER_TO_TILE = {
     'B': BlueTile,
@@ -17,6 +18,7 @@ LETTER_TO_TILE = {
     'D': DuelTile,
     'I': IntersectionTile,
     'T': ItemTile,
+    'S': ShopTile,
 }
 
 
