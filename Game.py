@@ -55,7 +55,7 @@ class Game(object):
         self.start_game()
         while self.state.turn_num < self.state.max_turns:
             self.update_standings() 
-            self.turn1()
+            self.turn()
             self.minigame()
             self.state.turn_num += 1
         self.bonus_stars()
@@ -66,7 +66,7 @@ class Game(object):
             p.coins = 10
             self.state.player_to_tile[p] = self.board.start
 
-    def turn1(self):
+    def turn(self):
         for p in self.state.players:
             p.use_item(self.state)
             # if we use a mushroom, rolls are handled on item.apply so we don't need to roll again
@@ -117,7 +117,6 @@ class Game(object):
         else: win_amt = 10
         # Battle or 4-player Minigame
         if battle or count(self.state.minigame_assign.values(), 'blue') == 4 or count(self.state.minigame_assign.values(), 'red') == 4:
-
             r = random.random()
             p = 0.0
             win_pcts = [p.skill/self.total_skill for p in self.state.players]
@@ -170,88 +169,6 @@ class Game(object):
                     x.minigames_won += 1
 
             self.stats.inc("num_two_vs_two")
-
-    def turn(self):
-
-        # 1. Use Items and Roll
-        #   1a. Double Dice
-        #   1a. Triple Dice
-        # 2. Check if star is passed
-        # 3. Pick up Items and Shop (if money allows)
-        # 4. Land on Space
-        #   4a. Blue:   +3 Coins
-        #   4b. Red:    -3 Coins
-        #   4c. Green:  +Coins/Star, -Coins, Teleport
-        #   4d. Bowser: -Coins/Star sometimes based on skill
-        #   4e: DK:     +Coins/Star sometimes based on skill
-        #   4f. Duel:   +- Coins/Star based on skill
-        # 5. Minigame (once all players are done)
-
-        for p in self.state.players:
-            # 1. Use Items and Roll
-            roll = self.roll()
-            p.spaces_moved += roll
-            p.spaces_from_star -= roll
-
-            # 2. Check if star is passed
-            if p.spaces_from_star <= 0:
-                if p.coins >= 20:
-                    self.buy_star(p)
-                    self.move_star()
-                    self.stats.inc("num_stars")
-                else:
-                    p.spaces_from_star = MAX_STAR_DIST + p.spaces_from_star
-
-            # 3. Pick up Items and Shop (if money allows)
-            # if random.random() < ITEM_PCT * roll:
-            #     p.items += 1
-
-            # 3.5 Use Items
-            # Because only one item can be used at a time, it becomes non-trivial to choose what item to use. 
-            # We use the following order of priority:
-            # 1. Use Mushrooms if the roll EV * mushroom multiplier will land them on a star
-
-            # item_cost = random.randint(0, 4) * 5
-            # if p.coins - item_cost >= 25: # TODO: Replace with some player-based tolerance value
-            #     p.items += 1
-            #     p.coins -= item_cost
-
-            # 4. Land on Space
-            r_space = random.random()
-
-            # 4b. Red: -3 Coins
-            if r_space < RED_PCT:
-                p.red += 1
-                p.coins -= 3
-                self.state.minigame_assign[p] = 'red'
-
-            # 4c. Green: +Coins/Star, -Coins, Teleport
-            elif r_space < RED_PCT + GREEN_PCT:
-                self.green_square(p)
-
-            # 4d. Bowser: -Coins/Star sometimes based on Minigame pct
-            elif r_space < RED_PCT + GREEN_PCT + BOWSER_PCT:
-                self.bowser_square(p)
-
-            # 4e: DK: +Coins/Srar sometimes based on skill
-            elif r_space < RED_PCT + GREEN_PCT + BOWSER_PCT + DK_PCT:
-                self.dk_square(p)
-
-            # 4f. Duel: +- Coins/Star based on skill            
-            elif r_space < RED_PCT + GREEN_PCT + BOWSER_PCT + DK_PCT + DUEL_PCT:
-                self.duel_square(p)
-
-            # 4a. Blue: +3 coins
-            else:
-                p.coins += 3
-                self.state.minigame_assign[p] = 'blue'
-
-            # Make sure nothing is negative
-            for x in self.state.players:
-                x.coins = max(x.coins, 0)
-                x.stars = max(x.stars, 0)
-
-            self.update_standings()    
 
     def green_square(self, p):
         r = random.choice([1,2,3])

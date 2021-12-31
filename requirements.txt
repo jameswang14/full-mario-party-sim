@@ -1,2 +1,2 @@
 backports-abc==0.5
-matplotlib==2.0.2
+matplotlib==3.4.1
